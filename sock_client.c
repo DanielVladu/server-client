@@ -9,7 +9,7 @@
 #include <errno.h>
 #include <arpa/inet.h>
 
-#define MAX_CHUNK 2097154 //2MB
+#define MAX_CHUNK 2097154 //the maximum file size to be loaded in memory without fragmenting
 
 char* trim_string(char *buff)
 {
@@ -30,10 +30,26 @@ char* trim_string(char *buff)
   return a;
 }
 
+int receiveall(int s, char *buf, int len)
+{
+  int total = 0;
+  int bytesleft = len;
+  int n;
+
+  while(total < len) {
+    n = read(s, buf+total, bytesleft);
+    if (n == -1 || n == 0) { break; }
+    total += n;
+    bytesleft -= n;
+  }
+  len = total;
+  return n == -1 ? 0 : total;
+}
+
 int main(int argc, char *argv[])
 {
   int sockfd = 0, n = 0;
-  char recvBuff[128], sendBuff[128];
+  char recvBuff[128];
   char *recvFile;
   struct sockaddr_in serv_addr;
 
@@ -69,8 +85,11 @@ int main(int argc, char *argv[])
     return 1;
   }
 
-  FILE *f = fopen("received_file.txt", "wb");
+  char *file_save_name = (char*)malloc(50*sizeof(char));
+  sprintf(file_save_name,"received_%s",argv[3]);
+  FILE *f = fopen(file_save_name, "wb");
   char *file_requested = argv[3];
+
   while (1)
   {
     n = send(sockfd, file_requested, strlen(file_requested), 0);
@@ -83,6 +102,10 @@ int main(int argc, char *argv[])
     {
       printf("File not found! \n");
     }
+    else if (recvBuff[0] == 'T' && recvBuff[1] == 'M' && recvBuff[2] == 'C')
+    {
+      printf("Too many clients. Try again later \n");
+    }
     else
     {
       int file_size = atoi(recvBuff);
@@ -90,62 +113,59 @@ int main(int argc, char *argv[])
 
 
       //for (int i=0;i<strlen(recvBuff);i++)
-        //recvBuff[i] = '\0';
+      //recvBuff[i] = '\0';
 
       if (file_size < MAX_CHUNK)
       {
         recvFile = (char*)malloc(file_size*sizeof(char));
+
         send(sockfd, "ok", 2, 0);
-        n = read(sockfd, recvFile, file_size);
-        recvFile[n] = 0;
-        printf("Bytes received from file: %d bytes\n",n - 1);
-        if (n == file_size - 1) printf("File received!\n");
-        char *received_text_file = trim_string(recvFile);
-        //printf("recvBUFF **%s**\n",recvFile);
-        //printf("recvBUFF trimmed **%s**\n",received_text_file);
+        n = receiveall(sockfd, recvFile,file_size);
+
+        printf("Bytes received from file: %d bytes\n",n);
+        if (n == file_size) printf("File received! Saved as %s\n",file_save_name);
+
         fwrite(recvFile , 1 , file_size , f);
 
-        free(received_text_file);
         free(recvFile);
       }
       else
       {
         int total_received = 0;
         int bytesleft = file_size;
-        while (total_received != file_size)
+        recvFile = (char*)malloc(MAX_CHUNK*sizeof(char));
+        send(sockfd, "ok", 2, 0);
+        while (total_received < file_size)
         {
-          if (bytesleft >= MAX_CHUNK)
+
+          if (bytesleft > MAX_CHUNK)
           {
-            recvFile = (char*)malloc(MAX_CHUNK*sizeof(char));
-            send(sockfd, "ok", 2, 0);
-            n = read(sockfd, recvFile, MAX_CHUNK);
+            n = receiveall(sockfd, recvFile, MAX_CHUNK);
             fwrite(recvFile , 1 , MAX_CHUNK , f);
             total_received += MAX_CHUNK;
             bytesleft -= MAX_CHUNK;
           }
           else
           {
-            recvFile = (char*)malloc(bytesleft*sizeof(char));
-            send(sockfd, "ok", 2, 0);
-            n = read(sockfd, recvFile, bytesleft);
+            n = receiveall(sockfd, recvFile, bytesleft);
             fwrite(recvFile , 1 , bytesleft, f);
             total_received += bytesleft;
             bytesleft -= bytesleft;
           }
         }
+        printf("Total received %d\n",total_received);
+        if (total_received == file_size) printf("File received! Saved as %s\n",file_save_name);
+        free(recvFile);
+        free(file_save_name);
       }
     }
     shutdown(sockfd, SHUT_RDWR);
     close(sockfd);
+
     break;
   }
 
   fclose(f);
-
-  if(n < 0)
-  {
-    printf("\n Read error \n");
-  }
 
   printf("\n");
   return 0;

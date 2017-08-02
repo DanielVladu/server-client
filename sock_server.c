@@ -11,7 +11,7 @@
 #include <signal.h>
 
 #define MAX_CHUNK 2097154 //2MB
-#define MAX_CLIENTS 50
+#define MAX_CLIENTS 20
 
 int listenfd = 0;
 
@@ -28,7 +28,7 @@ int sendall(int s, char *buf, int len)
     bytesleft -= n;
   }
   len = total;
-  return n==-1?0:1;
+  return n == -1 ? 0 : total;
 }
 
 char* trim_string(char *buff)
@@ -69,9 +69,9 @@ int main(int argc, char *argv[])
   struct sockaddr_in serv_addr;
 
   int fd;
-  char fd_array[MAX_CLIENTS];
+  //char fd_array[MAX_CLIENTS];
   int num_clients = 1;
-  fd_set readfds, testfds;
+  fd_set readfds;
 
   char sendBuff[128],recvBuff[128];
   int n = 0;
@@ -86,11 +86,12 @@ int main(int argc, char *argv[])
 
   bind(listenfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
 
-  listen(listenfd, 10);
-  printf("Listenfd %d\n",listenfd);
+  listen(listenfd, 1);
   FD_ZERO(&readfds);
   FD_SET(listenfd, &readfds);
+  FD_SET(0, &readfds);  /* Add keyboard to file descriptor set */
 
+  printf("Server listening on port %d\n",atoi(argv[1]));
   FILE *f;
 
   signal(SIGINT, cleanup);
@@ -98,42 +99,38 @@ int main(int argc, char *argv[])
 
   while(1)
   {
-    testfds = readfds;
-    select(FD_SETSIZE, &testfds, NULL, NULL, NULL);
+    select(FD_SETSIZE, &readfds, NULL, NULL, NULL);
 
-    /* If there is activity, find which descriptor it's on using FD_ISSET */
     for (fd = 0; fd < FD_SETSIZE; fd++) {
-      if (FD_ISSET(fd, &testfds)) {
+      if (FD_ISSET(fd, &readfds)) {
 
-        if (fd == listenfd) { /* Accept a new connection request */
+        if (fd == listenfd)
+        {
           connfd = accept(listenfd, (struct sockaddr*)NULL, NULL);
-          printf("COnnfd %d\n",connfd);
 
-          if (num_clients < MAX_CLIENTS) {
+          if (num_clients < MAX_CLIENTS)
+          {
             FD_SET(connfd, &readfds);
-            fd_array[num_clients]=connfd;
-            /*Client ID*/
-            printf("Client %d joined\n",num_clients++);
+            //fd_array[num_clients]=connfd;
+            printf("\nClient %d connected\n",num_clients++);
             fflush(stdout);
           }
           else {
-
-            //sprintf(msg, "Sorry, too many clients.  Try again later.\n");
-            //write(client_sockfd, msg, strlen(msg));
+            printf("Too many clients.  Try again later.\n");
+            sendall(connfd, "TMC", strlen("TMC"));
             close(connfd);
           }
         }
         else if(fd)
-        {  /*Process Client specific activity*/
+        {
           n = read(fd, recvBuff, sizeof(recvBuff)-1);
           recvBuff[n] = '\0';
-          printf("RECBUFF: %s\n",recvBuff);
 
           char *source = NULL;
           long bufsize;
           char *filename = trim_string(recvBuff);
 
-          printf("\nFILENAME trimmed: ***%s***\n",filename);
+          printf("File name trimmed: *%s*\n",filename);
           f = fopen(filename, "rb");
           if (f != NULL)
           {
@@ -148,15 +145,16 @@ int main(int argc, char *argv[])
               //sending file size
               sprintf(sendBuff,"%ld",bufsize);
               n = send(fd, sendBuff, strlen(sendBuff), 0);
-              printf("File size read: %s (%d bytes sent)\n",sendBuff,n);
+              printf("File size read with ftell: %s (%d bytes sent)\n",sendBuff,n);
+
+              if (fseek(f, 0L, SEEK_SET) != 0)
+              {
+                printf("Error fseek!\n");
+              }
 
               if (bufsize + 1 <= MAX_CHUNK)
               {
                 source = malloc(sizeof(char) * (bufsize + 1));
-                if (fseek(f, 0L, SEEK_SET) != 0)
-                {
-                  printf("Error fseek!\n");
-                }
 
                 int newLen = fread(source, sizeof(char), bufsize, f);
                 if ( ferror( f ) != 0 )
@@ -167,72 +165,62 @@ int main(int argc, char *argv[])
                 }
 
                 fclose(f);
-                printf("FILE: %s\n",source);
+                //printf("FILE: %s\n",source);
 
                 n = read(fd, recvBuff, sizeof(recvBuff)-1);
                 recvBuff[n] = '\0';
                 char *test_ok = trim_string(recvBuff);
                 if (test_ok[0] == 'o' && test_ok[1] == 'k') {
-                  if (sendall(fd,source,bufsize))
-                    printf("File sent!\n");
-                  else printf("Error sending file!\n");
+                  if ((n = sendall(fd,source,bufsize)))
+                  {
+                    printf("File sent (total %d bytes)!\n",n);
+                  }
+                  else {
+                    printf("Error sending file!\n");
+                  }
                 }
                 else {
                   printf("Client didn't want to accept the file!\n");
                 }
+
                 free(test_ok);
                 free(filename);
                 free(source);
               }
               else
               {
-                 int total_sent = 0;
-                 int bytesleft = bufsize;
-                 source = malloc(sizeof(char) * (MAX_CHUNK));
-                 while (total_sent != bufsize)
-                 {
-                   fseek(f, total_sent, SEEK_SET);
-
-                   if (bytesleft >= MAX_CHUNK)
-                   {
-                     int newLen = fread(source, sizeof(char), MAX_CHUNK, f);
-                     if ( ferror( f ) != 0 )
-                     {
-                       fputs("Error reading file", stderr);
-                     }
-                     if (sendall(fd,source,MAX_CHUNK))
-                     {
-                       total_sent += MAX_CHUNK;
-                       bytesleft -= MAX_CHUNK;
-                     }
-                    }
-                    else
-                    {
-                      int newLen = fread(source, sizeof(char), bytesleft, f);
-                      if ( ferror( f ) != 0 )
-                      {
-                        fputs("Error reading file", stderr);
-                      }
-                      if (sendall(fd,source,bytesleft))
-                      {
-                        total_sent += bytesleft;
-                        bytesleft -= bytesleft;
-                      }
-                    }
-                 }//while
+                int total_sent = 0;
+                int bytesread = 0;
+                source = malloc(sizeof(char) * (MAX_CHUNK));
+                while ((bytesread = fread(source, sizeof(char), MAX_CHUNK, f)) > 0 )
+                {
+                  if (sendall(fd,source,bytesread))
+                  {
+                    total_sent += bytesread;
+                  }
+                }//while
+                if (total_sent == bufsize)
+                {
+                  printf("File sent (total %d bytes)\n",total_sent);
+                }
+                else
+                {
+                  printf("File not sent (total %d bytes)\n",total_sent);
+                }
+                free(source);
               } //else
             }
 
+            printf("Client %d disconnected\n",--num_clients);
             close(fd);
-            num_clients--;
 
           }
           else
           {
             printf("File not found!\n");
             send(fd, "FNF", strlen("FNF"), 0);
+            printf("Client %d disconnected\n",--num_clients);
             close(fd);
-            num_clients--;
           }
 
         }//if
@@ -240,7 +228,7 @@ int main(int argc, char *argv[])
     }//for
 
     close(connfd);
-    sleep(1);
+    //sleep(1);
   } //while
 
   return 1;
