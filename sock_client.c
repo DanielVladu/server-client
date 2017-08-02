@@ -9,6 +9,8 @@
 #include <errno.h>
 #include <arpa/inet.h>
 
+#define MAX_CHUNK 2097154 //2MB
+
 char* trim_string(char *buff)
 {
   int i = 0;
@@ -35,9 +37,11 @@ int main(int argc, char *argv[])
   char *recvFile;
   struct sockaddr_in serv_addr;
 
+  printf("\n");
+
   if(argc != 4)
   {
-    printf("\n Usage: %s <ip of server> <port> <filename>\n",argv[0]);
+    printf("\n ***Usage: %s <ip of server> <port> <filename>\n",argv[0]);
     return 1;
   }
 
@@ -65,14 +69,14 @@ int main(int argc, char *argv[])
     return 1;
   }
 
-  FILE *f = fopen("received_file.txt", "w");
+  FILE *f = fopen("received_file.txt", "wb");
   char *file_requested = argv[3];
   while (1)
   {
+    n = send(sockfd, file_requested, strlen(file_requested), 0);
+    printf("Sent file name (%d bytes)\n",n);
 
-    send(sockfd, file_requested, strlen(file_requested), 0);
-
-    printf("\nstart receiving\n");
+    printf("Start receiving\n");
     n = read(sockfd, recvBuff, sizeof(recvBuff)-1);
     recvBuff[n] = 0;
     if (recvBuff[0] == 'F' && recvBuff[1] == 'N' && recvBuff[2] == 'F')
@@ -82,25 +86,57 @@ int main(int argc, char *argv[])
     else
     {
       int file_size = atoi(recvBuff);
-      printf("ATOI: %d\n",file_size);
-      recvFile = (char*)malloc(file_size*sizeof(char));
+      printf("File size received: %d bytes\n",file_size);
 
-      send(sockfd, "ok", 2, 0);
 
       //for (int i=0;i<strlen(recvBuff);i++)
         //recvBuff[i] = '\0';
 
-      n = read(sockfd, recvFile, file_size);
-      recvFile[n] = 0;
-      printf("N = %d\n",n);
-      char *received_text_file = trim_string(recvFile);
-      //printf("recvBUFF **%s**\n",recvFile);
-      //printf("recvBUFF trimmed **%s**\n",received_text_file);
-      fwrite(recvFile , 1 , file_size , f);
+      if (file_size < MAX_CHUNK)
+      {
+        recvFile = (char*)malloc(file_size*sizeof(char));
+        send(sockfd, "ok", 2, 0);
+        n = read(sockfd, recvFile, file_size);
+        recvFile[n] = 0;
+        printf("Bytes received from file: %d bytes\n",n - 1);
+        if (n == file_size - 1) printf("File received!\n");
+        char *received_text_file = trim_string(recvFile);
+        //printf("recvBUFF **%s**\n",recvFile);
+        //printf("recvBUFF trimmed **%s**\n",received_text_file);
+        fwrite(recvFile , 1 , file_size , f);
 
-      free(received_text_file);
-      free(recvFile);
+        free(received_text_file);
+        free(recvFile);
+      }
+      else
+      {
+        int total_received = 0;
+        int bytesleft = file_size;
+        while (total_received != file_size)
+        {
+          if (bytesleft >= MAX_CHUNK)
+          {
+            recvFile = (char*)malloc(MAX_CHUNK*sizeof(char));
+            send(sockfd, "ok", 2, 0);
+            n = read(sockfd, recvFile, MAX_CHUNK);
+            fwrite(recvFile , 1 , MAX_CHUNK , f);
+            total_received += MAX_CHUNK;
+            bytesleft -= MAX_CHUNK;
+          }
+          else
+          {
+            recvFile = (char*)malloc(bytesleft*sizeof(char));
+            send(sockfd, "ok", 2, 0);
+            n = read(sockfd, recvFile, bytesleft);
+            fwrite(recvFile , 1 , bytesleft, f);
+            total_received += bytesleft;
+            bytesleft -= bytesleft;
+          }
+        }
+      }
     }
+    shutdown(sockfd, SHUT_RDWR);
+    close(sockfd);
     break;
   }
 
@@ -111,6 +147,6 @@ int main(int argc, char *argv[])
     printf("\n Read error \n");
   }
 
-
+  printf("\n");
   return 0;
 }
