@@ -10,27 +10,8 @@
 #include <arpa/inet.h>
 #include <signal.h>
 
-#define MAX_CHUNK 2097154 //the maximum file size to be loaded in memory without fragmenting
-
-char* trim_string(char *buff)
-{
-  int i = 0;
-  int k = 0;
-  for (i = 0;i<strlen(buff);i++)
-  {
-    if (buff[i] != '\n' && buff[i] != '\r') k++;
-  }
-  char *a = (char*)malloc((k+1)*sizeof(char));
-  for (i=0;i<k;i++)
-  {
-    if (buff[i] != '\n' || buff[i] != '\r')
-    {
-      a[i] = buff[i];
-    }
-  }
-  a[i+1] = '\0';
-  return a;
-}
+//2MB = the maximum file size to be loaded in memory without fragmenting
+#define MAX_CHUNK 2097154
 
 int receiveall(int s, char *buf, int len)
 {
@@ -67,14 +48,14 @@ int main(int argc, char *argv[])
 
   if(argc != 4)
   {
-    printf("\n ***Usage: %s <ip of server> <port> <filename>\n",argv[0]);
+    printf("\n***Usage: %s <ip of server> <port> <filename>\n",argv[0]);
     return 1;
   }
 
   memset(recvBuff, '0',sizeof(recvBuff));
   if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
   {
-    printf("\n Error : Could not create socket \n");
+    printf("\nERR: Could not create socket \n");
     return 1;
   }
 
@@ -85,19 +66,17 @@ int main(int argc, char *argv[])
 
   if(inet_pton(AF_INET, argv[1], &serv_addr.sin_addr)<=0)
   {
-    printf("\n inet_pton error occured\n");
+    printf("\nERR: inet_pton error occured\n");
     return 1;
   }
 
   if( connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
   {
-    printf("\n Error : Connect Failed \n");
+    printf("\nERR: Connect Failed \n");
     return 1;
   }
 
-  char *file_save_name = (char*)malloc(50*sizeof(char));
-  sprintf(file_save_name,"received_%s",argv[3]);
-  FILE *f = fopen(file_save_name, "wb");
+  FILE *f;
   char *file_requested = argv[3];
 
   while (1)
@@ -118,6 +97,10 @@ int main(int argc, char *argv[])
     }
     else
     {
+      char *file_save_name = (char*)malloc(50*sizeof(char));
+      sprintf(file_save_name,"received_%s",argv[3]);
+      f = fopen(file_save_name, "wb");
+
       long file_size = atoi(recvBuff);
       printf("File size received: %ld bytes\n",file_size);
 
@@ -181,14 +164,13 @@ int main(int argc, char *argv[])
         free(recvFile);
         free(file_save_name);
       }
+      fclose(f);
     }
     shutdown(sockfd, SHUT_RDWR);
     close(sockfd);
 
     break;
   }
-
-  fclose(f);
 
   printf("\n");
   return 0;

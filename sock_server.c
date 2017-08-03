@@ -10,6 +10,7 @@
 #include <time.h>
 #include <signal.h>
 
+//2MB = the maximum file size to be loaded in memory without fragmenting
 #define MAX_CHUNK 2097154 //2MB
 #define MAX_CLIENTS 20
 
@@ -35,11 +36,13 @@ char* trim_string(char *buff)
 {
   int i = 0;
   int k = 0;
-  for (i = 0;i<strlen(buff);i++)
+
+  for (i = 0;i < strlen(buff);i++)
   {
-    if (buff[i] != '\n' && buff[i] != '\r') k++;
+    if (buff[i] != '\n' || buff[i] != '\r') k++;
   }
-  char *a = (char*)malloc(k*sizeof(char));
+
+  char *a = malloc(k*sizeof(char));
   for (i=0;i<k;i++)
   {
     if (buff[i] != '\n' || buff[i] != '\r')
@@ -47,6 +50,7 @@ char* trim_string(char *buff)
       a[i] = buff[i];
     }
   }
+  a[i] = '\0';
   return a;
 }
 
@@ -161,11 +165,10 @@ int main(int argc, char *argv[])
                 {
                   fputs("Error reading file", stderr);
                 } else {
-                  source[newLen++] = '\0'; //just to be safe
+                  source[newLen++] = '\0';
                 }
 
                 fclose(f);
-                //printf("FILE: %s\n",source);
 
                 n = read(fd, recvBuff, sizeof(recvBuff)-1);
                 recvBuff[n] = '\0';
