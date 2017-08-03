@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <arpa/inet.h>
+#include <signal.h>
 
 #define MAX_CHUNK 2097154 //the maximum file size to be loaded in memory without fragmenting
 
@@ -19,7 +20,7 @@ char* trim_string(char *buff)
   {
     if (buff[i] != '\n' && buff[i] != '\r') k++;
   }
-  char *a = (char*)malloc(k*sizeof(char));
+  char *a = (char*)malloc((k+1)*sizeof(char));
   for (i=0;i<k;i++)
   {
     if (buff[i] != '\n' || buff[i] != '\r')
@@ -27,6 +28,7 @@ char* trim_string(char *buff)
       a[i] = buff[i];
     }
   }
+  a[i+1] = '\0';
   return a;
 }
 
@@ -46,6 +48,12 @@ int receiveall(int s, char *buf, int len)
   return n == -1 ? 0 : total;
 }
 
+void cleanup()
+{
+  printf("Exiting\n");
+  exit(1);
+}
+
 int main(int argc, char *argv[])
 {
   int sockfd = 0, n = 0;
@@ -53,6 +61,8 @@ int main(int argc, char *argv[])
   char *recvFile;
   struct sockaddr_in serv_addr;
 
+  signal(SIGINT, cleanup);
+  atexit(cleanup);
   printf("\n");
 
   if(argc != 4)
@@ -108,12 +118,8 @@ int main(int argc, char *argv[])
     }
     else
     {
-      int file_size = atoi(recvBuff);
-      printf("File size received: %d bytes\n",file_size);
-
-
-      //for (int i=0;i<strlen(recvBuff);i++)
-      //recvBuff[i] = '\0';
+      long file_size = atoi(recvBuff);
+      printf("File size received: %ld bytes\n",file_size);
 
       if (file_size < MAX_CHUNK)
       {
@@ -131,13 +137,14 @@ int main(int argc, char *argv[])
       }
       else
       {
-        int total_received = 0;
-        int bytesleft = file_size;
+        long total_received = 0;
+        long bytesleft = file_size;
         recvFile = (char*)malloc(MAX_CHUNK*sizeof(char));
         send(sockfd, "ok", 2, 0);
+        printf("Receiving file...\n");
+        int i = 1; int width = 20;
         while (total_received < file_size)
         {
-
           if (bytesleft > MAX_CHUNK)
           {
             n = receiveall(sockfd, recvFile, MAX_CHUNK);
@@ -152,9 +159,25 @@ int main(int argc, char *argv[])
             total_received += bytesleft;
             bytesleft -= bytesleft;
           }
+          if (total_received >= i*0.05*file_size && i < 21)
+          {
+            i = (int)(total_received/(int)(0.05*file_size));
+            printf("\r[");
+            fflush(stdout);
+            for (int k=0; k < width;k++)
+            {
+              if (i < k) printf(" ");
+              else printf("=");
+              fflush(stdout);
+            }
+            printf("] %d%%  ",i*5);
+            fflush(stdout);
+          }
         }
-        printf("Total received %d\n",total_received);
-        if (total_received == file_size) printf("File received! Saved as %s\n",file_save_name);
+        printf("\n");
+        printf("Total received %ld bytes\n",total_received);
+        if (total_received == file_size) printf("File received! Saving as %s\n",file_save_name);
+        else printf("File not received entirely. Saving as %s\n",file_save_name);
         free(recvFile);
         free(file_save_name);
       }

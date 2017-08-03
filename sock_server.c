@@ -22,7 +22,7 @@ int sendall(int s, char *buf, int len)
   int n;
 
   while(total < len) {
-    n = send(s, buf+total, bytesleft, 0);
+    n = send(s, buf+total, bytesleft, MSG_NOSIGNAL);
     if (n == -1) { break; }
     total += n;
     bytesleft -= n;
@@ -53,7 +53,7 @@ char* trim_string(char *buff)
 void cleanup()
 {
   close(listenfd);
-  printf("Exiting \n");
+  printf("\nExiting ");
   exit(1);
 }
 
@@ -189,23 +189,43 @@ int main(int argc, char *argv[])
               }
               else
               {
-                int total_sent = 0;
+                long total_sent = 0;
                 int bytesread = 0;
                 source = malloc(sizeof(char) * (MAX_CHUNK));
+                printf("Sending file...\n");
+                int i = 1; int width = 20;
                 while ((bytesread = fread(source, sizeof(char), MAX_CHUNK, f)) > 0 )
                 {
+                  //sending file
                   if (sendall(fd,source,bytesread))
                   {
                     total_sent += bytesread;
                   }
+                  //progres bar
+                  if (total_sent >= i*0.05*bufsize && i < 21)
+                  {
+                    i = (int)(total_sent/(int)(0.05*bufsize));
+                    printf("\r[");
+                    fflush(stdout);
+                    for (int k=0; k < width;k++)
+                    {
+                      if (i < k) printf(" ");
+                      else printf("=");
+                      fflush(stdout);
+                    }
+                    printf("] %d%%  ",i*5);
+                    fflush(stdout);
+                  }
                 }//while
+                printf("\n");
+
                 if (total_sent == bufsize)
                 {
-                  printf("File sent (total %d bytes)\n",total_sent);
+                  printf("File sent (total %ld of %ld bytes)\n",total_sent,bufsize);
                 }
                 else
                 {
-                  printf("File not sent (total %d bytes)\n",total_sent);
+                  printf("File not sent (total %ld of %ld bytes)\n",total_sent,bufsize);
                 }
                 free(source);
               } //else
