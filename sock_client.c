@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
 
   if(argc != 4)
   {
-    printf("\n***Usage: %s <ip of server> <port> <filename>\n",argv[0]);
+    printf("\n***Usage: %s <ip of server> <port> <relative/path/filename>\n",argv[0]);
     return 1;
   }
 
@@ -89,7 +89,7 @@ int main(int argc, char *argv[])
     recvBuff[n] = 0;
     if (recvBuff[0] == 'F' && recvBuff[1] == 'N' && recvBuff[2] == 'F')
     {
-      printf("File not found! \n");
+      printf("File %s not found! \n",argv[3]);
     }
     else if (recvBuff[0] == 'T' && recvBuff[1] == 'M' && recvBuff[2] == 'C')
     {
@@ -98,11 +98,49 @@ int main(int argc, char *argv[])
     else
     {
       char *file_save_name = (char*)malloc(50*sizeof(char));
-      sprintf(file_save_name,"received_%s",argv[3]);
+      int pos = -1;
+      char *path=(char*)malloc(25*sizeof(char));
+      char *actual_file_name=(char*)malloc(25*sizeof(char));
+
+      for (int i = strlen(argv[3])-1; i > -1; i--)
+      {
+        if (argv[3][i] == '/')
+        {
+          pos = i;
+          break;
+        }
+      }
+
+      if (pos > 0)
+      {
+        //SAVE REQUESTED FILE IN SAME PATH AS ORIGINAL
+        /*
+        memcpy(path, &argv[3][0], pos );
+        memcpy(actual_file_name, &argv[3][pos+1], strlen(argv[3]) );
+        printf("Path: *%s*; Actual file name *%s*\n",path,actual_file_name);
+        sprintf(file_save_name,"%s/received_%s",path,actual_file_name); */
+        //SAVE REQUESTED FILE IN CURRENT DIRECTORY
+        memcpy(actual_file_name, &argv[3][pos+1], strlen(argv[3]) );
+        //printf("Actual file name *%s*\n",actual_file_name);
+        sprintf(file_save_name,"received_%s",actual_file_name);
+      }
+      else
+      {
+        sprintf(file_save_name,"received_%s",argv[3]);
+      }
+
+      free (path);
+      free (actual_file_name);
+
       f = fopen(file_save_name, "wb");
+      if (f == NULL)
+      {
+        printf("ERR: could not create file for saving, maybe wrong path ?\n");
+        exit(-1);
+      }
 
       long file_size = atoi(recvBuff);
-      printf("File size received: %ld bytes\n",file_size);
+      printf("Requested file size: %ld bytes\n",file_size);
 
       if (file_size < MAX_CHUNK)
       {
@@ -115,7 +153,6 @@ int main(int argc, char *argv[])
         if (n == file_size) printf("File received! Saved as %s\n",file_save_name);
 
         fwrite(recvFile , 1 , file_size , f);
-
         free(recvFile);
       }
       else
@@ -142,6 +179,7 @@ int main(int argc, char *argv[])
             total_received += bytesleft;
             bytesleft -= bytesleft;
           }
+
           if (total_received >= i*0.05*file_size && i < 21)
           {
             i = (int)(total_received/(int)(0.05*file_size));

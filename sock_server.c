@@ -42,7 +42,7 @@ char* trim_string(char *buff)
     if (buff[i] != '\n' || buff[i] != '\r') k++;
   }
 
-  char *a = malloc(k*sizeof(char));
+  char *a = malloc((k+1)*sizeof(char));
   for (i=0;i<k;i++)
   {
     if (buff[i] != '\n' || buff[i] != '\r')
@@ -187,7 +187,6 @@ int main(int argc, char *argv[])
                 }
 
                 free(test_ok);
-                free(filename);
                 free(source);
               }
               else
@@ -240,12 +239,13 @@ int main(int argc, char *argv[])
           }
           else
           {
-            printf("File not found!\n");
+            printf("File %s not found!\n",filename);
             send(fd, "FNF", strlen("FNF"), 0);
             printf("Client %d disconnected\n",--num_clients);
             close(fd);
           }
 
+          free(filename);
         }//if
       }//if
     }//for
