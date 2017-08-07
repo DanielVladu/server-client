@@ -17,7 +17,7 @@ int receiveall(int s, char *buf, int len)
 {
   int total = 0;
   int bytesleft = len;
-  int n;
+  long n;
 
   while(total < len) {
     n = read(s, buf+total, bytesleft);
@@ -29,6 +29,28 @@ int receiveall(int s, char *buf, int len)
   return n == -1 ? 0 : total;
 }
 
+char* trim_string(char *buff)
+{
+  int i = 0;
+  int k = 0;
+
+  for (i = 0;i < strlen(buff);i++)
+  {
+    if (buff[i] != '\n' || buff[i] != '\r') k++;
+  }
+
+  char *a = malloc((k+1)*sizeof(char));
+  for (i=0;i<k;i++)
+  {
+    if (buff[i] != '\n' || buff[i] != '\r')
+    {
+      a[i] = buff[i];
+    }
+  }
+  a[i] = '\0';
+  return a;
+}
+
 void cleanup()
 {
   printf("Exiting\n");
@@ -37,10 +59,13 @@ void cleanup()
 
 int main(int argc, char *argv[])
 {
+  while (1)
+  {
   int sockfd = 0, n = 0;
   char recvBuff[128];
   char *recvFile;
   struct sockaddr_in serv_addr;
+  int err = 0;
 
   signal(SIGINT, cleanup);
   atexit(cleanup);
@@ -77,10 +102,11 @@ int main(int argc, char *argv[])
   }
 
   FILE *f;
+  FILE *fc;
+
   char *file_requested = argv[3];
 
-  while (1)
-  {
+
     n = send(sockfd, file_requested, strlen(file_requested), 0);
     printf("Sent file name (%d bytes)\n",n);
 
@@ -150,7 +176,7 @@ int main(int argc, char *argv[])
         n = receiveall(sockfd, recvFile,file_size);
 
         printf("Bytes received from file: %d bytes\n",n);
-        if (n == file_size) printf("File received! Saved as %s\n",file_save_name);
+        if (n == file_size) printf("File received! Saving as %s\n",file_save_name);
 
         fwrite(recvFile , 1 , file_size , f);
         free(recvFile);
@@ -168,14 +194,14 @@ int main(int argc, char *argv[])
           if (bytesleft > MAX_CHUNK)
           {
             n = receiveall(sockfd, recvFile, MAX_CHUNK);
-            fwrite(recvFile , 1 , MAX_CHUNK , f);
+            n = fwrite(recvFile , 1 , MAX_CHUNK , f);
             total_received += MAX_CHUNK;
             bytesleft -= MAX_CHUNK;
           }
           else
           {
             n = receiveall(sockfd, recvFile, bytesleft);
-            fwrite(recvFile , 1 , bytesleft, f);
+            n = fwrite(recvFile , 1 , bytesleft, f);
             total_received += bytesleft;
             bytesleft -= bytesleft;
           }
@@ -197,17 +223,61 @@ int main(int argc, char *argv[])
         }
         printf("\n");
         printf("Total received %ld bytes\n",total_received);
+
         if (total_received == file_size) printf("File received! Saving as %s\n",file_save_name);
         else printf("File not received entirely. Saving as %s\n",file_save_name);
         free(recvFile);
-        free(file_save_name);
+
       }
       fclose(f);
-    }
-    shutdown(sockfd, SHUT_RDWR);
-    close(sockfd);
 
-    break;
+      send(sockfd, "ok", 2, 0);
+      n = read(sockfd, recvBuff, 60);
+      recvBuff[n] = '\0';
+      char check_msg[25];
+      char checksum_calc[60];
+      char *checksum_rec = trim_string(recvBuff);
+
+      sprintf(check_msg,"md5sum %s",file_save_name);
+      fc = popen(check_msg, "r");
+      if (fc == NULL) {
+        printf("ERR: Failed to calculate md5sum\n" );
+        exit(-1);
+      }
+      int flag = 0;
+      while (fgets(checksum_calc, sizeof(checksum_calc)-1, fc) != NULL) {
+          printf("Checksum: %s\n", checksum_calc);
+          for (int i=0;i<16;i++)
+          {
+            if (checksum_calc[i] != checksum_rec[i])
+            {
+              flag = 1;
+              break;
+            }
+          }
+      }
+
+      free(file_save_name);
+
+      if (flag == 1)
+      {
+        printf("ERR: Checksum error, file integrity problem\n");
+        printf("WARNING: Retrying...\n");
+        err = -1;
+      }
+      else
+      {
+        printf("Checksum OK\n");
+      }
+      pclose(fc);
+    }
+
+    if (err != -1)
+    {
+      shutdown(sockfd, SHUT_RDWR);
+      close(sockfd);
+      break;
+    }
   }
 
   printf("\n");

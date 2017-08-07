@@ -97,6 +97,7 @@ int main(int argc, char *argv[])
 
   printf("Server listening on port %d\n",atoi(argv[1]));
   FILE *f;
+  FILE *fc;
 
   signal(SIGINT, cleanup);
   atexit(cleanup);
@@ -168,8 +169,6 @@ int main(int argc, char *argv[])
                   source[newLen++] = '\0';
                 }
 
-                fclose(f);
-
                 n = read(fd, recvBuff, sizeof(recvBuff)-1);
                 recvBuff[n] = '\0';
                 char *test_ok = trim_string(recvBuff);
@@ -218,6 +217,7 @@ int main(int argc, char *argv[])
                     printf("] %d%%  ",i*5);
                     fflush(stdout);
                   }
+                  usleep(25000);
                 }//while
                 printf("\n");
 
@@ -231,8 +231,27 @@ int main(int argc, char *argv[])
                 }
                 free(source);
               } //else
-            }
 
+            }
+            fclose(f);
+
+            n = read(fd, recvBuff, 10);
+            recvBuff[n] = '\0';
+            if (recvBuff[0] == 'o' && recvBuff[1] == 'k')
+            {
+              char check_msg[25];
+              char checksum[100];
+              sprintf(check_msg,"md5sum %s",filename);
+              fc = popen(check_msg, "r");
+              if (fc == NULL) {
+                printf("ERR: Failed to calculate m5sum\n" );
+                exit(-1);
+              }
+              while (fgets(checksum, sizeof(checksum)-1, fc) != NULL) {
+                  n = sendall(fd,checksum,strlen(checksum));
+              }
+              pclose(fc);
+            }
             printf("Client %d disconnected\n",--num_clients);
             close(fd);
 
