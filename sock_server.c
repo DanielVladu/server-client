@@ -7,7 +7,6 @@
 #include <errno.h>
 #include <string.h>
 #include <sys/types.h>
-#include <time.h>
 #include <signal.h>
 
 //2MB = the maximum file size to be loaded in memory without fragmenting
@@ -56,6 +55,7 @@ char* trim_string(char *buff)
 
 void cleanup()
 {
+  shutdown(listenfd,SHUT_RDWR);
   close(listenfd);
   printf("\nExiting ");
   exit(1);
@@ -135,7 +135,7 @@ int main(int argc, char *argv[])
           long bufsize;
           char *filename = trim_string(recvBuff);
 
-          printf("File name trimmed: *%s*\n",filename);
+          printf("Requested file name (trimmed): *%s*\n",filename);
           f = fopen(filename, "rb");
           if (f != NULL)
           {
@@ -150,7 +150,7 @@ int main(int argc, char *argv[])
               //sending file size
               sprintf(sendBuff,"%ld",bufsize);
               n = send(fd, sendBuff, strlen(sendBuff), 0);
-              printf("File size read with ftell: %s (%d bytes sent)\n",sendBuff,n);
+              printf("Size of the requested file (sent to client): %s (%d bytes sent)\n",sendBuff,n);
 
               if (fseek(f, 0L, SEEK_SET) != 0)
               {
@@ -175,7 +175,7 @@ int main(int argc, char *argv[])
                 if (test_ok[0] == 'o' && test_ok[1] == 'k') {
                   if ((n = sendall(fd,source,bufsize)))
                   {
-                    printf("File sent (total %d bytes)!\n",n);
+                    printf("File sent entirely (total %d bytes)!\n",n);
                   }
                   else {
                     printf("Error sending file!\n");
@@ -195,32 +195,42 @@ int main(int argc, char *argv[])
                 source = malloc(sizeof(char) * (MAX_CHUNK));
                 printf("Sending file...\n");
                 int i = 1; int width = 20;
-                while ((bytesread = fread(source, sizeof(char), MAX_CHUNK, f)) > 0 )
+                n = read(fd, recvBuff, sizeof(recvBuff)-1);
+                recvBuff[n] = '\0';
+                char *test_ok = trim_string(recvBuff);
+                if (test_ok[0] == 'o' && test_ok[1] == 'k')
                 {
-                  //sending file
-                  if (sendall(fd,source,bytesread))
+                  while ((bytesread = fread(source, sizeof(char), MAX_CHUNK, f)) > 0 )
                   {
-                    total_sent += bytesread;
-                  }
-                  //progres bar
-                  if (total_sent >= i*0.05*bufsize && i < 21)
-                  {
-                    i = (int)(total_sent/(int)(0.05*bufsize));
-                    printf("\r[");
-                    fflush(stdout);
-                    for (int k=0; k < width;k++)
+                    //sending file
+                    if (sendall(fd,source,bytesread))
                     {
-                      if (i < k) printf(" ");
-                      else printf("=");
+                      total_sent += bytesread;
+                    }
+                    //progres bar
+                    if (total_sent >= i*0.05*bufsize && i < 21)
+                    {
+                      i = (int)(total_sent/(int)(0.05*bufsize));
+                      printf("\r[");
+                      fflush(stdout);
+                      for (int k=0; k < width;k++)
+                      {
+                        if (i < k) printf(" ");
+                        else printf("=");
+                        fflush(stdout);
+                      }
+                      printf("] %d%%  ",i*5);
                       fflush(stdout);
                     }
-                    printf("] %d%%  ",i*5);
-                    fflush(stdout);
-                  }
-                  usleep(25000);
-                }//while
-                printf("\n");
-
+                    usleep(5000);
+                  }//while
+                  printf("\n");
+                }
+                else
+                {
+                  printf("Client refused the file!\n");
+                  exit(1);
+                }
                 if (total_sent == bufsize)
                 {
                   printf("File sent (total %ld of %ld bytes)\n",total_sent,bufsize);
@@ -235,9 +245,10 @@ int main(int argc, char *argv[])
             }
             fclose(f);
 
+            memset(recvBuff, 0, 128);
             n = read(fd, recvBuff, 10);
             recvBuff[n] = '\0';
-            if (recvBuff[0] == 'o' && recvBuff[1] == 'k')
+            if (recvBuff[0] == 'c' && recvBuff[1] == 's')
             {
               char check_msg[25];
               char checksum[100];
@@ -248,7 +259,13 @@ int main(int argc, char *argv[])
                 exit(-1);
               }
               while (fgets(checksum, sizeof(checksum)-1, fc) != NULL) {
-                  n = sendall(fd,checksum,strlen(checksum));
+                checksum[strlen(checksum)-1] = '\0';
+                printf("strlen: %ld\n",strlen(checksum));
+                n = sendall(fd,checksum,strlen(checksum));
+                if (n == strlen(checksum))
+                {
+                  printf("Sent checksum: %s\n",checksum);
+                }
               }
               pclose(fc);
             }

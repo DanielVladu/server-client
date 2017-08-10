@@ -59,58 +59,58 @@ void cleanup()
 
 int main(int argc, char *argv[])
 {
-  while (1)
-  {
-  int sockfd = 0, n = 0;
-  char recvBuff[128];
-  char *recvFile;
-  struct sockaddr_in serv_addr;
-  int err = 0;
-
   signal(SIGINT, cleanup);
   atexit(cleanup);
-  printf("\n");
-
-  if(argc != 4)
+  while (1)
   {
-    printf("\n***Usage: %s <ip of server> <port> <relative/path/filename>\n",argv[0]);
-    return 1;
-  }
+    int sockfd = 0, n = 0;
+    char recvBuff[128];
+    char *recvFile;
+    struct sockaddr_in serv_addr;
+    int err = 0;
 
-  memset(recvBuff, '0',sizeof(recvBuff));
-  if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-  {
-    printf("\nERR: Could not create socket \n");
-    return 1;
-  }
+    printf("\n");
 
-  memset(&serv_addr, '0', sizeof(serv_addr));
+    if(argc != 4)
+    {
+      printf("\n***Usage: %s <ip of server> <port> <relative/path/filename>\n",argv[0]);
+      return 1;
+    }
 
-  serv_addr.sin_family = AF_INET;
-  serv_addr.sin_port = htons(atoi(argv[2]));
+    memset(recvBuff, '0',sizeof(recvBuff));
+    if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    {
+      printf("\nERR: Could not create socket \n");
+      return 1;
+    }
 
-  if(inet_pton(AF_INET, argv[1], &serv_addr.sin_addr)<=0)
-  {
-    printf("\nERR: inet_pton error occured\n");
-    return 1;
-  }
+    memset(&serv_addr, '0', sizeof(serv_addr));
 
-  if( connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-  {
-    printf("\nERR: Connect Failed \n");
-    return 1;
-  }
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(atoi(argv[2]));
 
-  FILE *f;
-  FILE *fc;
+    if(inet_pton(AF_INET, argv[1], &serv_addr.sin_addr)<=0)
+    {
+      printf("\nERR: inet_pton error occured\n");
+      return 1;
+    }
 
-  char *file_requested = argv[3];
+    if( connect(sockfd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+    {
+      printf("\nERR: Connect Failed \n");
+      return 1;
+    }
+
+    FILE *f;
+    FILE *fc;
+
+    char *file_requested = argv[3];
 
 
     n = send(sockfd, file_requested, strlen(file_requested), 0);
-    printf("Sent file name (%d bytes)\n",n);
+    printf("Sent request to server for file %s\n",file_requested);
 
-    printf("Start receiving\n");
+    printf("Waiting for response\n");
     n = read(sockfd, recvBuff, sizeof(recvBuff)-1);
     recvBuff[n] = 0;
     if (recvBuff[0] == 'F' && recvBuff[1] == 'N' && recvBuff[2] == 'F')
@@ -173,6 +173,7 @@ int main(int argc, char *argv[])
         recvFile = (char*)malloc(file_size*sizeof(char));
 
         send(sockfd, "ok", 2, 0);
+        printf("SENT OK 1!\n");
         n = receiveall(sockfd, recvFile,file_size);
 
         printf("Bytes received from file: %d bytes\n",n);
@@ -187,6 +188,7 @@ int main(int argc, char *argv[])
         long bytesleft = file_size;
         recvFile = (char*)malloc(MAX_CHUNK*sizeof(char));
         send(sockfd, "ok", 2, 0);
+        printf("SENT OK 2!\n");
         printf("Receiving file...\n");
         int i = 1; int width = 20;
         while (total_received < file_size)
@@ -231,8 +233,9 @@ int main(int argc, char *argv[])
       }
       fclose(f);
 
-      send(sockfd, "ok", 2, 0);
-      n = read(sockfd, recvBuff, 60);
+      n = send(sockfd, "cs", 2, 0);
+      memset(recvBuff, 0, 128);
+      n = read(sockfd, recvBuff, 120);
       recvBuff[n] = '\0';
       char check_msg[25];
       char checksum_calc[60];
@@ -245,16 +248,22 @@ int main(int argc, char *argv[])
         exit(-1);
       }
       int flag = 0;
+      fflush(fc);
+      //fflush(stdout);
       while (fgets(checksum_calc, sizeof(checksum_calc)-1, fc) != NULL) {
-          printf("Checksum: %s\n", checksum_calc);
-          for (int i=0;i<16;i++)
+        checksum_calc[strlen(checksum_calc)-1] = '\0';
+        fflush(fc);
+        //fflush(stdout);
+        printf("Checksum calculated:  %s\n", checksum_calc);
+        printf("Checksum received:    %s\n", checksum_rec);
+        for (int i=0;i<16;i++)
+        {
+          if (checksum_calc[i] != checksum_rec[i])
           {
-            if (checksum_calc[i] != checksum_rec[i])
-            {
-              flag = 1;
-              break;
-            }
+            flag = 1;
+            break;
           }
+        }
       }
 
       free(file_save_name);
