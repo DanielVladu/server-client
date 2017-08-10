@@ -13,4 +13,7 @@ The syntax:
 
 The client will save the received file using the following format: received_"filename".
 
-
+CODE STILL UNDER CONSTRUCTION. TO DO:
+- optimisations
+- improve memory management
+- comment the code 
