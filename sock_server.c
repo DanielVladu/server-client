@@ -117,7 +117,8 @@ int main(int argc, char *argv[])
           {
             FD_SET(connfd, &readfds);
             //fd_array[num_clients]=connfd;
-            printf("\nClient %d connected\n",num_clients++);
+            num_clients++;
+            printf("\nClient connected\n");
             fflush(stdout);
           }
           else {
@@ -245,7 +246,7 @@ int main(int argc, char *argv[])
             }
             fclose(f);
 
-            memset(recvBuff, 0, 128);
+            //memset(recvBuff, 0, 128);
             n = read(fd, recvBuff, 10);
             recvBuff[n] = '\0';
             if (recvBuff[0] == 'c' && recvBuff[1] == 's')
@@ -260,7 +261,6 @@ int main(int argc, char *argv[])
               }
               while (fgets(checksum, sizeof(checksum)-1, fc) != NULL) {
                 checksum[strlen(checksum)-1] = '\0';
-                printf("strlen: %ld\n",strlen(checksum));
                 n = sendall(fd,checksum,strlen(checksum));
                 if (n == strlen(checksum))
                 {
@@ -269,7 +269,8 @@ int main(int argc, char *argv[])
               }
               pclose(fc);
             }
-            printf("Client %d disconnected\n",--num_clients);
+            num_clients--;
+            printf("Client disconnected\n");
             close(fd);
 
           }
@@ -277,7 +278,8 @@ int main(int argc, char *argv[])
           {
             printf("File %s not found!\n",filename);
             send(fd, "FNF", strlen("FNF"), 0);
-            printf("Client %d disconnected\n",--num_clients);
+            num_clients--;
+            printf("Client disconnected\n");
             close(fd);
           }
 

@@ -173,7 +173,6 @@ int main(int argc, char *argv[])
         recvFile = (char*)malloc(file_size*sizeof(char));
 
         send(sockfd, "ok", 2, 0);
-        printf("SENT OK 1!\n");
         n = receiveall(sockfd, recvFile,file_size);
 
         printf("Bytes received from file: %d bytes\n",n);
@@ -188,7 +187,6 @@ int main(int argc, char *argv[])
         long bytesleft = file_size;
         recvFile = (char*)malloc(MAX_CHUNK*sizeof(char));
         send(sockfd, "ok", 2, 0);
-        printf("SENT OK 2!\n");
         printf("Receiving file...\n");
         int i = 1; int width = 20;
         while (total_received < file_size)
